@@ -1,0 +1,99 @@
+import os
+import time
+import requests as r
+from discord_webhook import DiscordWebhook, DiscordEmbed
+ 
+text_location = 'Desktop/supreme.txt'
+ 
+def check_db(supreme_item):
+    with open(text_location, 'r') as f:
+        instock = str(supreme_item) in f.read()
+        f.close()
+        return instock
+ 
+def add_db(supreme_item_id):
+    with open(text_location, 'a') as f:
+        f.write(str(supreme_item_id) + os.linesep)
+        f.close()
+ 
+def delete_db(supreme_item_id):
+    f = open(text_location, 'r')
+    lines = f.readlines()
+ 
+    with open(text_location, 'w') as f:
+        for line in lines:
+            if line.strip() == supreme_item_id or line.strip() == '':
+                pass
+            else: 
+                f.write(line)
+        f.close()
+ 
+def get_item_detail(id, name, first_run):
+    """
+    Makes request to supreme to get individual product info
+    and if product is in stock
+    """
+    item_url = f"https://www.supremenewyork.com/shop/%7Bid%7D.json"
+ 
+    item_variants = r.get(item_url).json()
+ 
+    for available_color in item_variants['styles']:
+        for available_size in available_color['sizes']:
+            supreme_item_id = available_size['id']
+            #check stock if instock > 1
+            if available_size["stock_level"] != 0:
+                if check_db(supreme_item_id):
+                    pass
+                else:
+                    add_db(supreme_item_id)
+                    print(f'adding - {available_color["name"]} - {available_size["name"]} - {item_variants["description"]}')
+                    if first_run != True:
+                        embed = DiscordEmbed(
+                        title=f'{name} - {available_color["name"]} - {available_size["name"]}', 
+                        description=f'{item_variants["description"]}',
+                        color='03b2f8')
+                        embed.set_thumbnail(url='https:' + available_color["image_url"])
+                        embed.add_embed_field(name='URL', value='https://www.supremenewyork.com/mobile/#products/' + str(id) + '/' + str(available_color['id']))
+                        discord_webhook(embed)
+            else:
+                if check_db(supreme_item_id):
+                    delete_db(supreme_item_id)
+ 
+def discord_webhook(embed):
+    webhook = DiscordWebhook(url='', rate_limit_retry=True)
+    webhook.add_embed(embed)
+    webhook.execute()
+ 
+ 
+def get_stock_items(first_run):
+    """
+    Makes request to supreme and gets all products
+    """
+    url = 'https://www.supremenewyork.com/mobile_stock.json'
+ 
+    product_stock = r.get(url=url).json()['products_and_categories']
+ 
+    for category in product_stock:
+        for item in product_stock[category]:
+            get_item_detail(item['id'], item['name'], first_run)
+ 
+ 
+def run_monitor():
+    """
+    Initiates the monitor
+    """
+    print('''\n-----------------------------------
+--- SUPREME MONITOR HAS STARTED ---
+-----------------------------------\n''')
+ 
+    first_run = True
+    while  True:
+        time.sleep(float(10))
+        get_stock_items(first_run)
+        if first_run == True:
+            print('First run complete')
+        print('Monitoring for restocks')
+        first_run = False
+ 
+ 
+run_monitor()
